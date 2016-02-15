@@ -63,7 +63,7 @@ class Parser(object):
         arguments:
         s -- tag string
         """
-        return s.startswith('<') and not s.startswith('</') and s.endswith('>')
+        return s.startswith('<') and not s.startswith('</') and not s.endswith('/>') and s.endswith('>')
 
     def is_end_tag(self, s):
         """
@@ -73,6 +73,12 @@ class Parser(object):
         s -- tag string
         """
         return s.startswith('</') and s.endswith('>')
+
+    def is_self_closing_tag(self, s):
+        """
+        Detects self-closing tags (<foo/>)
+        """
+        return s.startswith('<') and not s.startswith('</') and s.endswith('/>')
 
     def parse_line(self, s):
         """
@@ -94,6 +100,9 @@ class Parser(object):
         elif self.is_end_tag(s):
             name = self.get_tag_name(s)
             start = False
+        elif self.is_self_closing_tag(s):
+            name = '#SELF'
+            start = None
         else:
             name = '#TEXT'
             start = None
@@ -125,3 +134,4 @@ class ValLengthCalculator(object):
         ans += '\n  '.join('%s: %s' % (k, round(v, 1)) for k, v in self._attr_lengths.items())
         ans += '\n'
         return ans
+

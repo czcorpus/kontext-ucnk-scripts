@@ -45,25 +45,13 @@ import vertparser
 ITEM_COLS = [
     ('doc_id', unicode),
     ('doc_title',  unicode),
-    ('doc_subtitle',  unicode),
-    ('doc_author', unicode),
-    ('doc_issue',  unicode),
-    ('doc_publisher',  unicode),
-    ('doc_pubplace',  unicode),
-    ('doc_pubyear',  unicode),
-    ('doc_first_published',  unicode),
-    ('doc_translator',  unicode),
-    ('doc_srclang',  unicode),
-    ('doc_authsex',  unicode),
-    ('doc_transsex',  unicode),
-    ('doc_txtype_group',  unicode),
-    ('doc_txtype', unicode),
-    ('doc_genre_group', unicode),
-    ('doc_genre',  unicode),
-    ('doc_medium',  unicode),
-    ('doc_periodicity',  unicode),
-    ('doc_audience', unicode),
-    ('doc_isbnissn',  unicode),
+    ('doc_author',  unicode),
+    ('doc_year',  unicode),
+    ('doc_decade',  unicode),
+    ('doc_century',  unicode),
+    ('doc_biblio',  unicode),
+    ('doc_webSource',  unicode),
+    ('doc_ePubSource',  unicode),
     ('wordcount', int),
     ('poscount', int)
 ]
@@ -73,6 +61,9 @@ ITEM_COLS_MAP = dict(ITEM_COLS)
 
 def type_to_sql(t):
     return {unicode: 'text', int: 'integer'}.get(t, None)
+
+
+VIEW_COLS = [x[0] for x in ITEM_COLS[:-2]]
 
 
 SCHEMA = (
@@ -86,10 +77,7 @@ SCHEMA = (
     %s
     );""" % (', '.join(['%s %s' % (col, type_to_sql(col_type)) for col, col_type in ITEM_COLS])),
 
-    """CREATE VIEW bibliography as SELECT doc_id as id, doc_title, doc_subtitle, doc_author, doc_issue,
-            doc_publisher, doc_pubplace, doc_pubyear, doc_first_published, doc_translator, doc_srclang,
-            doc_authsex, doc_transsex, doc_txtype_group, doc_txtype, doc_genre_group,
-            doc_genre, doc_medium, doc_periodicity, doc_audience, doc_isbnissn FROM item"""
+    """CREATE VIEW bibliography as SELECT doc_id as id, %s FROM item""" % ', '.join(VIEW_COLS)
 )
 
 
@@ -216,12 +204,7 @@ def parse_file(f, item_tag, virtual_tags, range_attrs, interval_chars, corpname,
                     item['poscount'] = pos_count
                     pos_count = 0
                     yield item
-                try:
-                    stack.pop()
-                except Exception as e:
-                    print('ERROR: %s, elm: %s, pos:  %s' % (e, tag, pos_count))
-        elif tag == '#SELF':
-            pass  # self closing tag has no effect
+                stack.pop()
         else:
             pos_count += 1
 
@@ -239,7 +222,7 @@ def create_interval_char_map(conf):
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
-        print('Usage: ucnk_syn2015 IMPORT_CONF CORPUS_ID')
+        print('Usage: ucnk_eebo IMPORT_CONF CORPUS_ID')
         sys.exit(1)
 
     conf = json.load(open(sys.argv[1], 'rb'))
