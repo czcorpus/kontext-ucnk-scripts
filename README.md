@@ -24,9 +24,9 @@ Showing all the versions used for deployment:
 Reinstalling an existing archived instance:
 
 ```bash
-> python deploy.py 2016-08-10-11-12-37
+> python deploy.py deploy 2016-08-10-11-12-37
 
-> python deploy.py 2016-08-10
+> python deploy.py deploy 2016-08-10
 ```
 
 An archive ID (e.g. *2016-08-10-11-12-37*) can be entered in partial form - as a 
