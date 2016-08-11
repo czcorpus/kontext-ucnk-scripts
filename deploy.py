@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Copyright (c) 2016 Charles University in Prague, Faculty of Arts,
 #                    Institute of the Czech National Corpus
 # Copyright (c) 2016 Tomas Machalek <tomas.machalek@gmail.com>
@@ -191,6 +192,7 @@ class Deployer(object):
         arch_path = os.path.join(self._conf.archive_dir, date.strftime(DEFAULT_DATETIME_FORMAT))
         if not os.path.isdir(arch_path):
             os.makedirs(arch_path)
+        os.makedirs(os.path.join(arch_path, 'conf'))
         return arch_path
 
     @description('Copying built project to the archive')
@@ -228,7 +230,8 @@ class Deployer(object):
         """
         for item in self._conf.kontext_conf_files:
             src_path = os.path.join(self._conf.app_config_dir, item)
-            self.shell_cmd('cp', '-p', src_path, arch_path)
+            dst_path = os.path.join(arch_path, 'conf', item)
+            self.shell_cmd('cp', '-p', src_path, dst_path)
 
     @description('Updating data from repository')
     def update_from_repository(self):
@@ -271,7 +274,7 @@ class Deployer(object):
         Args:
             arch_path (str): path to an archive
         """
-        for item in FILES + [GIT_VERSION_FILE]:
+        for item in FILES + (GIT_VERSION_FILE, 'conf'):
             self.shell_cmd('cp', '-r', '-p', os.path.join(arch_path, item), self._conf.app_dir)
 
     def run_all(self, date):
@@ -350,6 +353,7 @@ if __name__ == '__main__':
     args = argp.parse_args()
     try:
         if args.config_path is None:
+            # alternatively: /usr/local/etc/kontext-deploy.json
             conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
