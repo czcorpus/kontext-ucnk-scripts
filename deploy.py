@@ -20,9 +20,10 @@ Required config:
     'appDir': '/path/to/the/web/application',
     'workingDir': '/path/to/working/dir/for/git/repo',
     'archiveDir': '/path/to/store/all/the/installed/versions',
-    "gitUrl": "git_repository_URL"
+    'appConfigDir': '/path/to/kontext/conf/dir',
+    'gitUrl': 'git_repository_URL',
     'gitBranch': 'used_git_branch',
-    'gitRemote': 'git_remote_identifier',
+    'gitRemote': 'git_remote_identifier'
 }
 """
 
@@ -34,15 +35,45 @@ import subprocess
 import platform
 import re
 import argparse
+import urllib2
 
+GIT_URL_TEST_TIMEOUT = 5
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
-FILES = ['cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py']
+FILES = ('cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py')
 GIT_VERSION_FILE = '.git_version'
-FORBIDDEN_DIRS = ['/', '/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/media', '/mnt',
-                  '/opt', '/proc', '/root', '/run', '/sbin', '/srv', '/sys', '/tmp', '/usr', '/var']
+APP_DIR = 'appDir'
+WORKING_DIR = 'workingDir'
+ARCHIVE_DIR = 'archiveDir'
+APP_CONFIG_DIR = 'appConfigDir'
+GIT_URL = 'gitUrl'
+GIT_BRANCH = 'gitBranch'
+GIT_REMOTE = 'gitRemote'
+KONTEXT_CONF_ALIASES = 'kontextConfAliases'
 
 
 class Configuration(object):
+    """
+    Args:
+        data (dict): deserialized JSON configuration data
+    """
+
+    KONTEXT_CONF_FILES = (
+        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'corpora.xml', 'gunicorn-conf.py',
+        'main-menu.json', 'tagsets.xml')
+
+    @staticmethod
+    def _is_forbidden_dir(path):
+        tmp = os.path.realpath(path).split('/')
+        return len(tmp) == 2 and tmp[0] == ''
+
+    @staticmethod
+    def _test_git_repo_url(url):
+        try:
+            ans = urllib2.urlopen(url, timeout=GIT_URL_TEST_TIMEOUT)
+            if ans.code != 200:
+                raise ConfigError('Unable to validate git repo url %s' % url)
+        except urllib2.URLError:
+            raise ConfigError('Unable to validate git repo url %s' % url)
 
     @staticmethod
     def _is_abs_path(s):
@@ -53,48 +84,52 @@ class Configuration(object):
         else:
             return re.match(r'[a-zA-Z]:\\', s) is not None
 
-    def __init__(self, conf_path):
-        keys = ['appConfigDir', 'workingDir', 'archiveDir', 'appDir']
-        with open(conf_path, 'rb') as fr:
-            data = json.load(fr)
+    def __init__(self, data, skip_remote_checks=False):
+        keys = [APP_CONFIG_DIR, WORKING_DIR, ARCHIVE_DIR, APP_DIR]
         for item in keys:
             p = os.path.realpath(data[item])
-            print(p)
-            if sum(1 if p == x else 0 for x in FORBIDDEN_DIRS) > 0:
+            if self._is_forbidden_dir(p):
                 raise ConfigError('%s cannot be set to forbidden value %s' % (item, p))
             elif not self._is_abs_path(p):
                 raise ConfigError('%s path must be absolute' % (item,))
             elif not os.path.isdir(p):
                 raise ConfigError('Path %s (%s) does not exist.' % (p, item))
+        if not skip_remote_checks:
+            self._test_git_repo_url(data[GIT_URL])
+        self._kc_aliases = data.get(KONTEXT_CONF_ALIASES, {})
         self._data = data
 
     @property
+    def kontext_conf_files(self):
+        return [self._kc_aliases[k] if k in self._kc_aliases else k for k in self.KONTEXT_CONF_FILES]
+
+    @property
     def app_dir(self):
-        return os.path.realpath(self._data['appDir'])
+        return os.path.realpath(self._data[APP_DIR])
 
     @property
     def working_dir(self):
-        return os.path.realpath(self._data['workingDir'])
+        return os.path.realpath(self._data[WORKING_DIR])
 
     @property
     def archive_dir(self):
-        return os.path.realpath(self._data['archiveDir'])
+        return os.path.realpath(self._data[ARCHIVE_DIR])
 
     @property
     def app_config_dir(self):
-        return os.path.realpath(self._data['appConfigDir'])
+        return os.path.realpath(self._data[APP_CONFIG_DIR])
 
     @property
     def git_url(self):
-        return self._data['gitUrl']
+        return self._data[GIT_URL]
 
     @property
     def git_branch(self):
-        return self._data['gitBranch']
+        return self._data[GIT_BRANCH]
 
     @property
     def git_remote(self):
-        return self._data['gitRemote']
+        return self._data[GIT_REMOTE]
 
 
 class ConfigError(Exception):
@@ -191,7 +226,9 @@ class Deployer(object):
         Raises:
             ShellCommandError
         """
-        self.shell_cmd('cp', '-r', '-p', self._conf.app_config_dir, arch_path)
+        for item in self._conf.kontext_conf_files:
+            src_path = os.path.join(self._conf.app_config_dir, item)
+            self.shell_cmd('cp', '-p', src_path, arch_path)
 
     @description('Updating data from repository')
     def update_from_repository(self):
@@ -300,6 +337,10 @@ def find_matching_archive(conf, arch_id):
 
 
 if __name__ == '__main__':
+    if os.getuid() == 0:
+        import sys
+        print('Please do not run the script as root')
+        sys.exit(1)
     argp = argparse.ArgumentParser(description='UCNK KonText deployment script')
     argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list)')
     argp.add_argument('archive_id', metavar='ARCHIVE_ID', nargs='?',
@@ -312,7 +353,8 @@ if __name__ == '__main__':
             conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
-        conf = Configuration(conf_path)
+        with open(conf_path, 'rb') as fr:
+            conf = Configuration(json.load(fr))
 
         if args.action == 'deploy':
             d = Deployer(conf)
