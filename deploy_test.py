@@ -220,7 +220,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(0, len(os.listdir(APP_DIR)))
 
     def test_deploy_new_version(self):
-        pass # TODO
+        pass  # TODO
 
 
 if __name__ == '__main__':
