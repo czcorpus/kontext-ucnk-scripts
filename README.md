@@ -33,15 +33,7 @@ An archive ID (e.g. *2016-08-10-11-12-37*) can be entered in partial form - as a
 prefix (e.g. *2016-08-10*). As long as there is no ambiguity in the entry, the script
 is able to fetch a matching archive ID.
 
-## Plug-Ins
 
-### ucnk\_remote\_auth2
+### logdb.py
 
-* *db.sql* creates all the required additional tables and triggers
-* *syncdb.py* provides a one-way synchronization between our information system and KonText database
-  * the script should be from *cron* or via *Celery Beat*
-
-
-### live\_attributes
-
-This section contains scripts for extraction of structural attributes data from the vertical file.
+Performs a bulk operation on
