@@ -50,6 +50,7 @@ GIT_URL = 'gitUrl'
 GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
+KONTEXT_CUSTOM_CONF = 'customConf'
 
 
 class Configuration(object):
@@ -102,7 +103,8 @@ class Configuration(object):
 
     @property
     def kontext_conf_files(self):
-        return [self._kc_aliases[k] if k in self._kc_aliases else k for k in self.KONTEXT_CONF_FILES]
+        return [self._kc_aliases[k] if k in self._kc_aliases else k
+                for k in self.KONTEXT_CONF_FILES] + self._data.get(KONTEXT_CUSTOM_CONF, [])
 
     @property
     def app_dir(self):

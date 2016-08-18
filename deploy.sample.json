@@ -1,0 +1,10 @@
+{
+    "appDir": "/opt/kontext/production",
+    "workingDir": "/var/opt/install/kontext/kontext.src",
+    "archiveDir": "/var/opt/install/kontext/deploy.archive",
+    "appConfigDir": "/var/opt/install/kontext/conf",
+    "gitUrl": "https://github.com/czcorpus/kontext.git",
+    "gitBranch": "master",
+    "gitRemote": "origin",
+    "customConf": ["syntax-viewer.json", "my-special-stuff.xml"]
+}
