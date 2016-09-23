@@ -50,6 +50,7 @@ GIT_URL = 'gitUrl'
 GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
+KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
 
 
 class Configuration(object):
@@ -98,11 +99,13 @@ class Configuration(object):
         if not skip_remote_checks:
             self._test_git_repo_url(data[GIT_URL])
         self._kc_aliases = data.get(KONTEXT_CONF_ALIASES, {})
+        self._kc_custom = data.get(KONTEXT_CONF_CUSTOM, [])
         self._data = data
 
     @property
     def kontext_conf_files(self):
-        return [self._kc_aliases[k] if k in self._kc_aliases else k for k in self.KONTEXT_CONF_FILES]
+        conf_files = self.KONTEXT_CONF_FILES + tuple(self._kc_custom)
+        return [self._kc_aliases[k] if k in self._kc_aliases else k for k in conf_files]
 
     @property
     def app_dir(self):
