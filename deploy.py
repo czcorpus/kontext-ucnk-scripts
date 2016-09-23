@@ -52,6 +52,7 @@ GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
 KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
+GLOBAL_CONF_PATH = '/usr/local/etc/kontext-deploy.json'
 
 
 class InvalidatedArchiveException(Exception):
@@ -379,8 +380,10 @@ if __name__ == '__main__':
     args = argp.parse_args()
     try:
         if args.config_path is None:
-            # alternatively: /usr/local/etc/kontext-deploy.json
-            conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
+            if os.path.isfile(GLOBAL_CONF_PATH):
+                conf_path = GLOBAL_CONF_PATH
+            else:
+                conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
         with open(conf_path, 'rb') as fr:
