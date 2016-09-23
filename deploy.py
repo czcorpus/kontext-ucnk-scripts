@@ -41,7 +41,8 @@ import urllib2
 GIT_URL_TEST_TIMEOUT = 5
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
 FILES = ('cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py')
-GIT_VERSION_FILE = '.git_version'
+DEPLOY_MESSAGE_FILE = '.deploy_info'
+INVALIDATION_FILE = '.invalid'
 APP_DIR = 'appDir'
 WORKING_DIR = 'workingDir'
 ARCHIVE_DIR = 'archiveDir'
@@ -50,7 +51,12 @@ GIT_URL = 'gitUrl'
 GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
-KONTEXT_CUSTOM_CONF = 'customConf'
+KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
+GLOBAL_CONF_PATH = '/usr/local/etc/kontext-deploy.json'
+
+
+class InvalidatedArchiveException(Exception):
+    pass
 
 
 class Configuration(object):
@@ -99,12 +105,13 @@ class Configuration(object):
         if not skip_remote_checks:
             self._test_git_repo_url(data[GIT_URL])
         self._kc_aliases = data.get(KONTEXT_CONF_ALIASES, {})
+        self._kc_custom = data.get(KONTEXT_CONF_CUSTOM, [])
         self._data = data
 
     @property
     def kontext_conf_files(self):
-        return [self._kc_aliases[k] if k in self._kc_aliases else k
-                for k in self.KONTEXT_CONF_FILES] + self._data.get(KONTEXT_CUSTOM_CONF, [])
+        conf_files = self.KONTEXT_CONF_FILES + tuple(self._kc_custom)
+        return [self._kc_aliases[k] if k in self._kc_aliases else k for k in conf_files]
 
     @property
     def app_dir(self):
@@ -249,15 +256,17 @@ class Deployer(object):
             self.shell_cmd('git', 'merge', '%s/%s' % (self._conf.git_remote, self._conf.git_branch))
 
     @description('Writing information about used GIT commit')
-    def record_commit_id(self, arch_path):
+    def record_deployment_info(self, arch_path, message):
         """
         Args:
             arch_path (str): path to an archive
         """
         p = self.shell_cmd('git', 'log', '-1', '--oneline', stdout=subprocess.PIPE)
         commit_info = p.stdout.read().strip()
-        with open(os.path.join(arch_path, '.git_version'), 'wb') as fw:
-            fw.write(commit_info)
+        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'wb') as fw:
+            if message:
+                fw.write(message + '\n\n')
+            fw.write(commit_info + '\n')
 
     @description('Building project using Grunt.js')
     def build_project(self):
@@ -276,10 +285,10 @@ class Deployer(object):
         Args:
             arch_path (str): path to an archive
         """
-        for item in FILES + (GIT_VERSION_FILE, 'conf'):
+        for item in FILES + (DEPLOY_MESSAGE_FILE, 'conf'):
             self.shell_cmd('cp', '-r', '-p', os.path.join(arch_path, item), self._conf.app_dir)
 
-    def run_all(self, date):
+    def run_all(self, date, message):
         """
         Args:
             date (datetime): a date used to create a new archive
@@ -289,7 +298,7 @@ class Deployer(object):
         self.build_project()
         arch_path = self.create_archive(date)
         self.copy_configuration(arch_path)
-        self.record_commit_id(arch_path)
+        self.record_deployment_info(arch_path, message)
         self.copy_app_to_archive(arch_path)
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
@@ -302,8 +311,8 @@ class Deployer(object):
         arch_path = os.path.join(self._conf.archive_dir, archive_id)
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
-        with open(os.path.join(arch_path, GIT_VERSION_FILE), 'rb') as fr:
-            print('\nSource repository version:\n%s' % fr.read())
+        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'rb') as fr:
+            print('\nDeployment information:\n%s' % fr.read())
 
 
 def list_archive(conf):
@@ -315,6 +324,20 @@ def list_archive(conf):
     print(conf.archive_dir)
     for item in os.listdir(conf.archive_dir):
         print('\t{0}'.format(item))
+
+
+def invalidate_archive(conf, archive_id, message):
+    archive_id = find_matching_archive(conf, archive_id)
+    arch_path = os.path.join(conf.archive_dir, archive_id)
+    with open(os.path.join(arch_path, INVALIDATION_FILE), 'w') as fw:
+        fw.write(message + '\n')
+
+
+def _test_archive_validity(conf, archive_id):
+    flag_file_path = os.path.join(conf.archive_dir, archive_id, INVALIDATION_FILE)
+    if os.path.isfile(flag_file_path):
+        with open(flag_file_path, 'r') as fr:
+            raise InvalidatedArchiveException('Archive marked as invalid. Reason: %s' % fr.read())
 
 
 def find_matching_archive(conf, arch_id):
@@ -347,16 +370,20 @@ if __name__ == '__main__':
         print('Please do not run the script as root')
         sys.exit(1)
     argp = argparse.ArgumentParser(description='UCNK KonText deployment script')
-    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list)')
+    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list, invalidate)')
     argp.add_argument('archive_id', metavar='ARCHIVE_ID', nargs='?',
                       default='new', help='Archive identifier (default is *new*)')
     argp.add_argument('-c', '--config-path', type=str,
                       help='Path to a JSON config file (default is *deploy.json* in script\'s directory)')
+    argp.add_argument('-m', '--message', type=str,
+                      help='A custom message stored in generated archive (.deployinfo)')
     args = argp.parse_args()
     try:
         if args.config_path is None:
-            # alternatively: /usr/local/etc/kontext-deploy.json
-            conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
+            if os.path.isfile(GLOBAL_CONF_PATH):
+                conf_path = GLOBAL_CONF_PATH
+            else:
+                conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
         with open(conf_path, 'rb') as fr:
@@ -366,9 +393,10 @@ if __name__ == '__main__':
             d = Deployer(conf)
             if args.archive_id == 'new':
                 print('installing latest version from %s' % conf.git_branch)
-                d.run_all(datetime.now())
+                d.run_all(datetime.now(), args.message)
             else:
                 m = find_matching_archive(conf, args.archive_id)
+                _test_archive_validity(conf, m)
                 if m is not None:
                     print('installing from archive: %s' % m)
                     d.from_archive(m)
@@ -376,6 +404,8 @@ if __name__ == '__main__':
                     InputError('No matching archive for %s' % args.archive_id)
         elif args.action == 'list':
             list_archive(conf)
+        elif args.action == 'invalidate':
+            invalidate_archive(conf, args.archive_id, args.message)
         else:
             raise Exception('Unknown action "%s" (use one of: deploy, list)' % (args.action,))
     except ConfigError as e:
