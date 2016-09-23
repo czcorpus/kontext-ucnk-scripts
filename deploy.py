@@ -37,7 +37,7 @@ import argparse
 
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
 FILES = ['cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py']
-GIT_VERSION_FILE = '.git_version'
+DEPLOY_MESSAGE_FILE = '.deploy_info'
 FORBIDDEN_DIRS = ['/', '/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/media', '/mnt',
                   '/opt', '/proc', '/root', '/run', '/sbin', '/srv', '/sys', '/tmp', '/usr', '/var']
 
@@ -207,15 +207,17 @@ class Deployer(object):
             self.shell_cmd('git', 'merge', '%s/%s' % (self._conf.git_remote, self._conf.git_branch))
 
     @description('Writing information about used GIT commit')
-    def record_commit_id(self, arch_path):
+    def record_deployment_info(self, arch_path, message):
         """
         Args:
             arch_path (str): path to an archive
         """
         p = self.shell_cmd('git', 'log', '-1', '--oneline', stdout=subprocess.PIPE)
         commit_info = p.stdout.read().strip()
-        with open(os.path.join(arch_path, '.git_version'), 'wb') as fw:
-            fw.write(commit_info)
+        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'wb') as fw:
+            if message:
+                fw.write(message + '\n\n')
+            fw.write(commit_info + '\n')
 
     @description('Building project using Grunt.js')
     def build_project(self):
@@ -234,10 +236,10 @@ class Deployer(object):
         Args:
             arch_path (str): path to an archive
         """
-        for item in FILES + [GIT_VERSION_FILE]:
+        for item in FILES + [DEPLOY_MESSAGE_FILE]:
             self.shell_cmd('cp', '-r', '-p', os.path.join(arch_path, item), self._conf.app_dir)
 
-    def run_all(self, date):
+    def run_all(self, date, message):
         """
         Args:
             date (datetime): a date used to create a new archive
@@ -247,7 +249,7 @@ class Deployer(object):
         self.build_project()
         arch_path = self.create_archive(date)
         self.copy_configuration(arch_path)
-        self.record_commit_id(arch_path)
+        self.record_deployment_info(arch_path, message)
         self.copy_app_to_archive(arch_path)
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
@@ -260,8 +262,8 @@ class Deployer(object):
         arch_path = os.path.join(self._conf.archive_dir, archive_id)
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
-        with open(os.path.join(arch_path, GIT_VERSION_FILE), 'rb') as fr:
-            print('\nSource repository version:\n%s' % fr.read())
+        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'rb') as fr:
+            print('\nDeployment information:\n%s' % fr.read())
 
 
 def list_archive(conf):
@@ -306,6 +308,8 @@ if __name__ == '__main__':
                       default='new', help='Archive identifier (default is *new*)')
     argp.add_argument('-c', '--config-path', type=str,
                       help='Path to a JSON config file (default is *deploy.json* in script\'s directory)')
+    argp.add_argument('-m', '--message', type=str,
+                      help='A custom message stored in generated archive (.deployinfo)')
     args = argp.parse_args()
     try:
         if args.config_path is None:
@@ -318,7 +322,7 @@ if __name__ == '__main__':
             d = Deployer(conf)
             if args.archive_id == 'new':
                 print('installing latest version from %s' % conf.git_branch)
-                d.run_all(datetime.now())
+                d.run_all(datetime.now(), args.message)
             else:
                 m = find_matching_archive(conf, args.archive_id)
                 if m is not None:
