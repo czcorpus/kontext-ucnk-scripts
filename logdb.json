@@ -1,0 +1,25 @@
+{
+  "url": "elastic.ucnk:9200",
+  "index": "cnk-logs",
+  "queries": {
+    "delete-ske": {
+      "type": "ske",
+      "query": {"match_all": {}}
+    },
+    "copy-kontext": {
+      "op": {"type": "copy", "target-index": "cnk-apps"},
+      "type": "kontext",
+      "query": {"match_all": {}}
+    },
+    "copy-ske": {
+      "op": {"type": "copy", "target-index": "cnk-apps"},
+      "type": "ske",
+      "query": {"match_all": {}}
+    },
+    "delete-syd": {
+      "op": {"type": "delete"},
+      "type": "syd",
+      "query": {"match_all": {}}
+    }
+  }
+}

@@ -379,6 +379,7 @@ if __name__ == '__main__':
     args = argp.parse_args()
     try:
         if args.config_path is None:
+            # alternatively: /usr/local/etc/kontext-deploy.json
             conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
