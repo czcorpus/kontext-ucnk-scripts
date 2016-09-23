@@ -42,6 +42,7 @@ GIT_URL_TEST_TIMEOUT = 5
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
 FILES = ('cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py')
 DEPLOY_MESSAGE_FILE = '.deploy_info'
+INVALIDATION_FILE = '.invalid'
 APP_DIR = 'appDir'
 WORKING_DIR = 'workingDir'
 ARCHIVE_DIR = 'archiveDir'
@@ -51,6 +52,10 @@ GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
 KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
+
+
+class InvalidatedArchiveException(Exception):
+    pass
 
 
 class Configuration(object):
@@ -320,6 +325,20 @@ def list_archive(conf):
         print('\t{0}'.format(item))
 
 
+def invalidate_archive(conf, archive_id, message):
+    archive_id = find_matching_archive(conf, archive_id)
+    arch_path = os.path.join(conf.archive_dir, archive_id)
+    with open(os.path.join(arch_path, INVALIDATION_FILE), 'w') as fw:
+        fw.write(message + '\n')
+
+
+def _test_archive_validity(conf, archive_id):
+    flag_file_path = os.path.join(conf.archive_dir, archive_id, INVALIDATION_FILE)
+    if os.path.isfile(flag_file_path):
+        with open(flag_file_path, 'r') as fr:
+            raise InvalidatedArchiveException('Archive marked as invalid. Reason: %s' % fr.read())
+
+
 def find_matching_archive(conf, arch_id):
     """
     Args:
@@ -350,7 +369,7 @@ if __name__ == '__main__':
         print('Please do not run the script as root')
         sys.exit(1)
     argp = argparse.ArgumentParser(description='UCNK KonText deployment script')
-    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list)')
+    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list, invalidate)')
     argp.add_argument('archive_id', metavar='ARCHIVE_ID', nargs='?',
                       default='new', help='Archive identifier (default is *new*)')
     argp.add_argument('-c', '--config-path', type=str,
@@ -373,6 +392,7 @@ if __name__ == '__main__':
                 d.run_all(datetime.now(), args.message)
             else:
                 m = find_matching_archive(conf, args.archive_id)
+                _test_archive_validity(conf, m)
                 if m is not None:
                     print('installing from archive: %s' % m)
                     d.from_archive(m)
@@ -380,6 +400,8 @@ if __name__ == '__main__':
                     InputError('No matching archive for %s' % args.archive_id)
         elif args.action == 'list':
             list_archive(conf)
+        elif args.action == 'invalidate':
+            invalidate_archive(conf, args.archive_id, args.message)
         else:
             raise Exception('Unknown action "%s" (use one of: deploy, list)' % (args.action,))
     except ConfigError as e:
