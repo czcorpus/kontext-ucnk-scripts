@@ -59,6 +59,10 @@ class InvalidatedArchiveException(Exception):
     pass
 
 
+class InvalidConfigException(Exception):
+    pass
+
+
 class Configuration(object):
     """
     Args:
@@ -288,6 +292,14 @@ class Deployer(object):
         for item in FILES + (DEPLOY_MESSAGE_FILE, 'conf'):
             self.shell_cmd('cp', '-r', '-p', os.path.join(arch_path, item), self._conf.app_dir)
 
+    @description('Validating actual config.xml')
+    def validate_configuration(self):
+        validator_script = os.path.join(self._conf.working_dir, 'scripts', 'validate_xml.py')
+        conf_path = os.path.join(self._conf.working_dir, 'conf', 'config.xml')
+        p = self.shell_cmd(validator_script, conf_path)
+        if p.returncode > 0:
+            raise InvalidConfigException('Invalid app configuration')
+
     def run_all(self, date, message):
         """
         Args:
@@ -295,6 +307,7 @@ class Deployer(object):
         """
         self.update_from_repository()
         self.update_working_conf()
+        self.validate_configuration()
         self.build_project()
         arch_path = self.create_archive(date)
         self.copy_configuration(arch_path)
