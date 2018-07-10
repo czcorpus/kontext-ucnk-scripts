@@ -268,11 +268,11 @@ class Deployer(object):
                 fw.write(message + '\n\n')
             fw.write(commit_info + '\n')
 
-    @description('Building project using Grunt.js')
+    @description('Building project using Webpack')
     def build_project(self):
         if not os.path.isdir(os.path.join(self._conf.working_dir, 'node_modules')):
             self.shell_cmd('npm', 'install')
-        self.shell_cmd('grunt', 'production')
+        self.shell_cmd('make', 'production')
 
     @description('Removing current deployment')
     def remove_current_deployment(self):
