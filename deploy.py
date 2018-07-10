@@ -327,6 +327,8 @@ def list_archive(conf):
 
 
 def invalidate_archive(conf, archive_id, message):
+    if not message:
+        raise ValueError('A message must be specified (-m)')
     archive_id = find_matching_archive(conf, archive_id)
     arch_path = os.path.join(conf.archive_dir, archive_id)
     with open(os.path.join(arch_path, INVALIDATION_FILE), 'w') as fw:
