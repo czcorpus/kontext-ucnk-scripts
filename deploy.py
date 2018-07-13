@@ -37,6 +37,9 @@ import platform
 import re
 import argparse
 import urllib2
+from lxml import etree
+import uuid
+
 
 GIT_URL_TEST_TIMEOUT = 5
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
@@ -230,8 +233,14 @@ class Deployer(object):
         Raises:
             ShellCommandError
         """
-        self.shell_cmd('cp', '-p', os.path.join(self._conf.app_config_dir, 'config.xml'),
-                       os.path.join(self._conf.working_dir, 'conf'))
+        source_conf = os.path.join(self._conf.app_config_dir, 'config.xml')
+        target_conf = os.path.join(self._conf.working_dir, 'conf', 'config.xml')
+        doc = etree.parse(source_conf)
+        srch = doc.find('global/deployment_id')
+        srch.text = str(uuid.uuid1())
+        result_xml = etree.tostring(doc, encoding='utf-8', pretty_print=True)
+        with open(target_conf, 'wb') as fw:
+            fw.write(result_xml)
 
     @description('Copying configuration to the archive')
     def copy_configuration(self, arch_path):
