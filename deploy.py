@@ -66,6 +66,147 @@ class InvalidConfigException(Exception):
     pass
 
 
+class PackageInfoException(Exception):
+    pass
+
+
+class VersionInfoException(Exception):
+    pass
+
+
+class JSAppVersionInfo(object):
+    """
+    A helper class to work with semantic
+    version identifiers. Please note that
+    this does not support full "semver"
+    specification.
+    """
+    def __init__(self, name, ver):
+        self._name = name
+        self._prefix = ''
+        self._pre_release_id = None
+        if type(ver) is tuple:
+            self._ver = ver
+        elif isinstance(ver, basestring):
+            self._parse_ver(ver)
+        else:
+            raise VersionInfoException('Failed to use version info of type {0}'.format(ver))
+
+    def _parse_ver(self, s):
+        items = s.split('.', 2)
+        if not items[0][0].isdigit():
+            self._prefix = items[0][0]
+            major = int(items[0][1:])
+        else:
+            major = int(items[0])
+        minor = int(items[1])
+
+        tmp = items[2].split('-')
+        patch = int(tmp[0])
+        if len(tmp) > 1:
+            self._pre_release_id = tmp[1]
+        self._ver = (major, minor, patch)
+
+    def __repr__(self):
+        return '{5} {0}{1}.{2}.{3}{4}'.format(
+            self._prefix, self._ver[0], self._ver[1], self._ver[2],
+            '-{0}'.format(self._pre_release_id) if self._pre_release_id else '', self._name)
+
+    def __getitem__(self, item):
+        return self._ver[item]
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def is_prerelease(self):
+        return self._pre_release_id is not None
+
+    def cmp(self, other_ver):
+        if other_ver is None:
+            return 3
+        for i in range(3):
+            if self[i] > other_ver[i]:
+                return 3 - i
+            elif self[i] < other_ver[i]:
+                return i - 3
+        if self.is_prerelease and not other_ver.is_prerelease:
+            return -1
+        elif not self.is_prerelease and other_ver.is_prerelease:
+            return 1
+        return 0
+
+
+class NPMPackageInfo(object):
+    """
+    A helper class to analyze NPM dependencies
+    in package.json. Please note that this does
+    support only features needed for this deploy
+    script (i.e. it does not conform full package.json
+    specification).
+    """
+
+    def __init__(self, data):
+        if type(data) is dict:
+            self._data = data
+        elif type(data) is basestring:
+            self._data = json.loads(data)
+        elif type(data) is file:
+            self._data = json.load(data)
+        else:
+            raise PackageInfoException('Unknown data source: {0}'.format(type(data)))
+
+    @property
+    def dependencies(self):
+        return (JSAppVersionInfo(x[0], x[1]) for x in self._data['dependencies'].items())
+
+    @property
+    def dev_dependencies(self):
+        return (JSAppVersionInfo(x[0], x[1]) for x in self._data['devDependencies'].items())
+
+    def get_dependency(self, name):
+        for d in self.dependencies:
+            if d.name == name:
+                return d
+        return None
+
+    def get_dev_dependency(self, name):
+        for d in self.dev_dependencies:
+            if d.name == name:
+                return d
+        return None
+
+
+def get_required_npm_update(old_ver_path, new_ver_path):
+    if not os.path.exists(old_ver_path):
+        return ('npm', 'install')
+    with open(old_ver_path, 'rb') as fr1, open(new_ver_path, 'rb') as fr2:
+        p1 = NPMPackageInfo(fr1)
+        p2 = NPMPackageInfo(fr2)
+        deps_cmd = None
+        for d1 in p1.dependencies:
+            d2 = p2.get_dependency(d1.name)
+            if d1.cmp(d2) != 0:
+                deps_cmd = ('npm', 'update')
+        if deps_cmd is None:
+            for d2 in p2.dependencies:
+                d1 = p1.get_dependency(d2.name)
+                if d2.cmp(d1) != 0:
+                    deps_cmd = ('npm', 'update')
+        # dev dependencies
+        for d1 in p1.dev_dependencies:
+            d2 = p2.get_dev_dependency(d1.name)
+            if d1.cmp(d2) != 0:
+                deps_cmd = ('npm', 'update', '--dev')
+        if deps_cmd is None or deps_cmd[-1] != '--dev':
+            for d2 in p2.dev_dependencies:
+                d1 = p1.get_dev_dependency(d2.name)
+                if d2.cmp(d1) != 0:
+                    deps_cmd = ('npm', 'update', '--dev')
+        return deps_cmd
+
+
 class Configuration(object):
     """
     Args:
@@ -165,11 +306,20 @@ def description(text):
     def decor(fn):
         @wraps(fn)
         def wrapper(*args, **kw):
-            print('\n')
-            print(70 * '-')
-            print('| %s%s|' % (text, max(0, 67 - len(text)) * ' '))
-            print(70 * '-')
-            return fn(*args, **kw)
+            try:
+                has_err = False
+                print('\n')
+                print(70 * '-')
+                print('| %s%s|' % (text, max(0, 67 - len(text)) * ' '))
+                print(70 * '-')
+                return fn(*args, **kw)
+            except Exception as ex:
+                has_err = True
+                print(u'[ ERROR ]: {0}'.format(ex))
+                raise ex
+            finally:
+                if not has_err:
+                    print('[ OK ]')
         return wrapper
     return decor
 
@@ -283,8 +433,6 @@ class Deployer(object):
 
     @description('Building project using Webpack')
     def build_project(self):
-        if not os.path.isdir(os.path.join(self._conf.working_dir, 'node_modules')):
-            self.shell_cmd('npm', 'install')
         self.shell_cmd('make', 'production')
 
     @description('Removing current deployment')
@@ -309,6 +457,18 @@ class Deployer(object):
         if p.returncode > 0:
             raise InvalidConfigException('Invalid app configuration')
 
+    @description('Comparing current and new package.json for changed dependencies')
+    def update_npm_deps(self):
+        """
+        """
+        if not os.path.isdir(os.path.join(self._conf.working_dir, 'node_modules')):
+            self.shell_cmd('npm', 'install')
+        else:
+            curr_pkg_path = os.path.join(self._conf.app_dir, 'package.json')
+            new_pkg_path = os.path.join(self._conf.working_dir, 'package.json')
+            upd = get_required_npm_update(curr_pkg_path, new_pkg_path)
+            self.shell_cmd(*upd)
+
     def run_all(self, date, message):
         """
         Args:
@@ -316,6 +476,7 @@ class Deployer(object):
         """
         self.update_from_repository()
         self.update_working_conf()
+        self.update_npm_deps()
         self.validate_configuration()
         self.build_project()
         arch_path = self.create_archive(date)
@@ -435,6 +596,6 @@ if __name__ == '__main__':
     except ConfigError as e:
         print('\nConfiguration error: %s\n' % e)
     except Exception as e:
-        print('\nERROR: %s\n' % e)
+        print('\nFailed to deploy latest version.\n')
     print('\n')
 
