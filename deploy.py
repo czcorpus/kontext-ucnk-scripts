@@ -467,7 +467,8 @@ class Deployer(object):
             curr_pkg_path = os.path.join(self._conf.app_dir, 'package.json')
             new_pkg_path = os.path.join(self._conf.working_dir, 'package.json')
             upd = get_required_npm_update(curr_pkg_path, new_pkg_path)
-            self.shell_cmd(*upd)
+            if upd is not None:
+                self.shell_cmd(*upd)
 
     def run_all(self, date, message):
         """
