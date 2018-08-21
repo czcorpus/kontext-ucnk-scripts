@@ -214,8 +214,7 @@ class Configuration(object):
     """
 
     KONTEXT_CONF_FILES = (
-        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'corpora.xml', 'gunicorn-conf.py',
-        'main-menu.json', 'tagsets.xml')
+        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'gunicorn-conf.py', 'main-menu.json', 'tagsets.xml')
 
     @staticmethod
     def _is_forbidden_dir(path):
