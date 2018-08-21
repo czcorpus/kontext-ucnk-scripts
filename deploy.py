@@ -31,6 +31,7 @@ Required config:
 from datetime import datetime
 from functools import wraps
 import os
+import shutil
 import json
 import subprocess
 import platform
@@ -214,8 +215,7 @@ class Configuration(object):
     """
 
     KONTEXT_CONF_FILES = (
-        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'corpora.xml', 'gunicorn-conf.py',
-        'main-menu.json', 'tagsets.xml')
+        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'gunicorn-conf.py', 'main-menu.json', 'tagsets.xml')
 
     @staticmethod
     def _is_forbidden_dir(path):
@@ -384,12 +384,12 @@ class Deployer(object):
             ShellCommandError
         """
         source_conf = os.path.join(self._conf.app_config_dir, 'config.xml')
-        target_conf = os.path.join(self._conf.working_dir, 'conf', 'config.xml')
+        shutil.copy(source_conf, os.path.join(os.path.dirname(source_conf), 'config.xml.bak'))
         doc = etree.parse(source_conf)
         srch = doc.find('global/deployment_id')
         srch.text = str(uuid.uuid1())
         result_xml = etree.tostring(doc, encoding='utf-8', pretty_print=True)
-        with open(target_conf, 'wb') as fw:
+        with open(source_conf, 'wb') as fw:
             fw.write(result_xml)
 
     @description('Copying configuration to the archive')
@@ -452,7 +452,7 @@ class Deployer(object):
     @description('Validating actual config.xml')
     def validate_configuration(self):
         validator_script = os.path.join(self._conf.working_dir, 'scripts', 'validate_xml.py')
-        conf_path = os.path.join(self._conf.working_dir, 'conf', 'config.xml')
+        conf_path = os.path.join(self._conf.app_config_dir, 'config.xml')
         p = self.shell_cmd(validator_script, conf_path)
         if p.returncode > 0:
             raise InvalidConfigException('Invalid app configuration')
