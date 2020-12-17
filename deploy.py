@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (c) 2016 Charles University in Prague, Faculty of Arts,
 #                    Institute of the Czech National Corpus
 # Copyright (c) 2016 Tomas Machalek <tomas.machalek@gmail.com>
@@ -37,14 +37,16 @@ import subprocess
 import platform
 import re
 import argparse
-import urllib2
+import urllib.request
+import urllib.error
 from lxml import etree
 import uuid
+from io import IOBase
 
 
 GIT_URL_TEST_TIMEOUT = 5
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%d-%H-%M-%S'
-FILES = ('cmpltmpl', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker.py')
+FILES = ('templates', 'lib', 'locale', 'public', 'scripts', 'package.json', 'worker')
 DEPLOY_MESSAGE_FILE = '.deploy_info'
 INVALIDATION_FILE = '.invalid'
 APP_DIR = 'appDir'
@@ -88,7 +90,7 @@ class JSAppVersionInfo(object):
         self._pre_release_id = None
         if type(ver) is tuple:
             self._ver = ver
-        elif isinstance(ver, basestring):
+        elif type(ver) is str:
             self._parse_ver(ver)
         else:
             raise VersionInfoException('Failed to use version info of type {0}'.format(ver))
@@ -151,9 +153,9 @@ class NPMPackageInfo(object):
     def __init__(self, data):
         if type(data) is dict:
             self._data = data
-        elif type(data) is basestring:
+        elif type(data) is str:
             self._data = json.loads(data)
-        elif type(data) is file:
+        elif isinstance(data, IOBase):
             self._data = json.load(data)
         else:
             raise PackageInfoException('Unknown data source: {0}'.format(type(data)))
@@ -225,10 +227,10 @@ class Configuration(object):
     @staticmethod
     def _test_git_repo_url(url):
         try:
-            ans = urllib2.urlopen(url, timeout=GIT_URL_TEST_TIMEOUT)
+            ans = urllib.request.urlopen(url, timeout=GIT_URL_TEST_TIMEOUT)
             if ans.code != 200:
                 raise ConfigError('Unable to validate git repo url %s' % url)
-        except urllib2.URLError:
+        except urllib.error.URLError:
             raise ConfigError('Unable to validate git repo url %s' % url)
 
     @staticmethod
@@ -426,10 +428,10 @@ class Deployer(object):
         """
         p = self.shell_cmd('git', 'log', '-1', '--oneline', stdout=subprocess.PIPE)
         commit_info = p.stdout.read().strip()
-        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'wb') as fw:
+        with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'w') as fw:
             if message:
                 fw.write(message + '\n\n')
-            fw.write(commit_info + '\n')
+            fw.write(commit_info.decode('utf-8') + '\n')
 
     @description('Building project using Webpack')
     def build_project(self):
@@ -596,7 +598,8 @@ if __name__ == '__main__':
             raise Exception('Unknown action "%s" (use one of: deploy, list)' % (args.action,))
     except ConfigError as e:
         print('\nConfiguration error: %s\n' % e)
-    except Exception as e:
-        print('\nFailed to deploy latest version.\n')
+#    except Exception as e:
+#        print('\nFailed to deploy latest version.\n')
+#        print('Reason: {}'.format(e))
     print('\n')
 
