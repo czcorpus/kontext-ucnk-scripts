@@ -435,7 +435,7 @@ class Deployer(object):
 
     @description('Building project using Webpack')
     def build_project(self):
-        self.shell_cmd('make', 'production')
+        self.shell_cmd('npm', 'start', 'build:production')
 
     @description('Removing current deployment')
     def remove_current_deployment(self):
