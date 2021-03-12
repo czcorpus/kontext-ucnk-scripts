@@ -6,5 +6,8 @@
     "gitUrl": "https://github.com/czcorpus/kontext.git",
     "gitBranch": "master",
     "gitRemote": "origin",
-    "customConf": ["syntax-viewer.json", "my-special-stuff.xml"]
+    "kontextConfCustom": ["syntax-viewer.json", "my-special-stuff.xml"],
+    "targetSymlinks": {
+        "/path/to/some/vendor/files": "/opt/kontext/production/public/files/vendor"
+    }
 }
