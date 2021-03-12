@@ -479,7 +479,7 @@ class Deployer(object):
 
     @description('Creating custom symbolic links')
     def create_custom_symlinks(self):
-        for source, target in self._conf.target_symlinks:
+        for source, target in self._conf.target_symlinks.items():
             os.symlink(source, target)
 
     def run_all(self, date, message):
