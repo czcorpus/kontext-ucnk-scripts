@@ -42,6 +42,7 @@ import urllib.error
 from lxml import etree
 import uuid
 from io import IOBase
+from textwrap import dedent
 
 
 GIT_URL_TEST_TIMEOUT = 5
@@ -58,7 +59,9 @@ GIT_BRANCH = 'gitBranch'
 GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
 KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
+TARGET_SYMLINKS = 'targetSymlinks'
 GLOBAL_CONF_PATH = '/usr/local/etc/kontext-deploy.json'
+KONTEXT_CONF_FILES = ('config.xml', 'gunicorn-conf.py', 'main-menu.json', 'tagsets.xml')
 
 
 class InvalidatedArchiveException(Exception):
@@ -216,9 +219,6 @@ class Configuration(object):
         data (dict): deserialized JSON configuration data
     """
 
-    KONTEXT_CONF_FILES = (
-        'beatconfig.py', 'celeryconfig.py', 'config.xml', 'gunicorn-conf.py', 'main-menu.json', 'tagsets.xml')
-
     @staticmethod
     def _is_forbidden_dir(path):
         tmp = os.path.realpath(path).split('/')
@@ -256,11 +256,12 @@ class Configuration(object):
             self._test_git_repo_url(data[GIT_URL])
         self._kc_aliases = data.get(KONTEXT_CONF_ALIASES, {})
         self._kc_custom = data.get(KONTEXT_CONF_CUSTOM, [])
+        self._target_symlinks = data.get(TARGET_SYMLINKS, {})
         self._data = data
 
     @property
     def kontext_conf_files(self):
-        conf_files = self.KONTEXT_CONF_FILES + tuple(self._kc_custom)
+        conf_files = KONTEXT_CONF_FILES + tuple(self._kc_custom)
         return [self._kc_aliases[k] if k in self._kc_aliases else k for k in conf_files]
 
     @property
@@ -290,6 +291,10 @@ class Configuration(object):
     @property
     def git_remote(self):
         return self._data[GIT_REMOTE]
+
+    @property
+    def target_symlinks(self):
+        return self._target_symlinks
 
 
 class ConfigError(Exception):
@@ -472,6 +477,11 @@ class Deployer(object):
             if upd is not None:
                 self.shell_cmd(*upd)
 
+    @description('Creating custom symbolic links')
+    def create_custom_symlinks(self):
+        for source, target in self._conf.target_symlinks:
+            os.symlink(source, target)
+
     def run_all(self, date, message):
         """
         Args:
@@ -488,6 +498,7 @@ class Deployer(object):
         self.copy_app_to_archive(arch_path)
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
+        self.create_custom_symlinks()
 
     def from_archive(self, archive_id):
         """
@@ -557,7 +568,17 @@ if __name__ == '__main__':
         import sys
         print('Please do not run the script as root')
         sys.exit(1)
-    argp = argparse.ArgumentParser(description='UCNK KonText deployment script')
+    argp = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=dedent('''\
+            A simple KonText deployment script.
+
+            Note: only core configuration files are installed by default:
+
+            [ {} ]
+
+            To add more files, please configure "kontextConfCustom" item
+            in your deployment config file.'''.format(', '.join(KONTEXT_CONF_FILES))))
     argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list, invalidate)')
     argp.add_argument('archive_id', metavar='ARCHIVE_ID', nargs='?',
                       default='new', help='Archive identifier (default is *new*)')
