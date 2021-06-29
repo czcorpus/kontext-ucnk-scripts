@@ -451,8 +451,8 @@ class Deployer(object):
 
     @description('Removing current deployment')
     def remove_current_deployment(self):
-        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '*'), shell=True))
-        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '.[a-z]*'), shell=True))
+        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '*')), shell=True)
+        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '.[a-z]*')), shell=True)
 
     @description('Deploying new version')
     def deploy_new_version(self, arch_path):
