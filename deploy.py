@@ -31,6 +31,7 @@ Required config:
 from datetime import datetime
 from functools import wraps
 import os
+import sys
 import shutil
 import json
 import subprocess
@@ -60,7 +61,7 @@ GIT_REMOTE = 'gitRemote'
 KONTEXT_CONF_ALIASES = 'kontextConfAliases'
 KONTEXT_CONF_CUSTOM = 'kontextConfCustom'
 TARGET_SYMLINKS = 'targetSymlinks'
-GLOBAL_CONF_PATH = '/usr/local/etc/kontext-deploy.json'
+GLOBAL_CONF_PATH = os.environ.get('GLOBAL_CONF_PATH', '/usr/local/etc/kontext-deploy.json')
 KONTEXT_CONF_FILES = ('config.xml', 'gunicorn-conf.py', 'main-menu.json', 'tagsets.xml')
 
 
@@ -229,9 +230,9 @@ class Configuration(object):
         try:
             ans = urllib.request.urlopen(url, timeout=GIT_URL_TEST_TIMEOUT)
             if ans.code != 200:
-                raise ConfigError('Unable to validate git repo url %s' % url)
+                raise ConfigError(f'Unable to validate git repo url {url}')
         except urllib.error.URLError:
-            raise ConfigError('Unable to validate git repo url %s' % url)
+            raise ConfigError(f'Unable to validate git repo url {url}')
 
     @staticmethod
     def _is_abs_path(s):
@@ -247,11 +248,11 @@ class Configuration(object):
         for item in keys:
             p = os.path.realpath(data[item])
             if self._is_forbidden_dir(p):
-                raise ConfigError('%s cannot be set to forbidden value %s' % (item, p))
+                raise ConfigError(f'{item} cannot be set to forbidden value {p}')
             elif not self._is_abs_path(p):
-                raise ConfigError('%s path must be absolute' % (item,))
+                raise ConfigError(f'{item} path must be absolute')
             elif not os.path.isdir(p):
-                raise ConfigError('Path %s (%s) does not exist.' % (p, item))
+                raise ConfigError(f'Path {p} ({item}) does not exist.')
         if not skip_remote_checks:
             self._test_git_repo_url(data[GIT_URL])
         self._kc_aliases = data.get(KONTEXT_CONF_ALIASES, {})
@@ -317,7 +318,7 @@ def description(text):
                 has_err = False
                 print('\n')
                 print(70 * '-')
-                print('| %s%s|' % (text, max(0, 67 - len(text)) * ' '))
+                print('| {}{}|'.format(text, max(0, 67 - len(text)) * ' '))
                 print(70 * '-')
                 return fn(*args, **kw)
             except Exception as ex:
@@ -349,7 +350,7 @@ class Deployer(object):
         """
         p = subprocess.Popen(args, cwd=self._conf.working_dir, env=os.environ.copy(), **kw)
         if p.wait() != 0:
-            raise ShellCommandError('Failed to process action: %s' % ' '.join(args))
+            raise ShellCommandError('Failed to process action: {}'.format(' '.join(args)))
         return p
 
     @description('Creating archive directory for the new version')
@@ -385,13 +386,18 @@ class Deployer(object):
             self.shell_cmd('cp', '-r', '-p', src_path, arch_path)
 
     @description('Updating working config.xml')
-    def update_working_conf(self):
+    def update_working_conf(self, update_confxml):
         """
         Raises:
             ShellCommandError
         """
         source_conf = os.path.join(self._conf.app_config_dir, 'config.xml')
-        shutil.copy(source_conf, os.path.join(os.path.dirname(source_conf), 'config.xml.bak'))
+        if update_confxml:
+            try:
+                shutil.copy(source_conf, os.path.join(os.path.dirname(source_conf), 'config.xml.bak'))
+            except Exception as ex:
+                print('\U0001F44E Failed to create a backup copy of config.xml: {ex}')
+                print('... ignoring and continuing')
         doc = etree.parse(source_conf)
         srch = doc.find('global/deployment_id')
         srch.text = str(uuid.uuid1())
@@ -421,9 +427,10 @@ class Deployer(object):
         if not os.path.isdir(os.path.join(working_dir, '.git')):
             self.shell_cmd('git', 'clone', self._conf.git_url, '.')
         else:
+            self.shell_cmd('git', 'reset', '--hard', 'HEAD')
             self.shell_cmd('git', 'checkout', self._conf.git_branch)
             self.shell_cmd('git', 'fetch', self._conf.git_remote)
-            self.shell_cmd('git', 'merge', '%s/%s' % (self._conf.git_remote, self._conf.git_branch))
+            self.shell_cmd('git', 'merge', f'{self._conf.git_remote}{self._conf.git_branch}')
 
     @description('Writing information about used GIT commit')
     def record_deployment_info(self, arch_path, message):
@@ -444,8 +451,8 @@ class Deployer(object):
 
     @description('Removing current deployment')
     def remove_current_deployment(self):
-        self.shell_cmd('rm -rf %s' % os.path.join(self._conf.app_dir, '*'), shell=True)
-        self.shell_cmd('rm -rf %s' % os.path.join(self._conf.app_dir, '.[a-z]*'), shell=True)
+        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '*'), shell=True))
+        self.shell_cmd('rm -rf {}'.format(os.path.join(self._conf.app_dir, '.[a-z]*'), shell=True))
 
     @description('Deploying new version')
     def deploy_new_version(self, arch_path):
@@ -482,13 +489,13 @@ class Deployer(object):
         for source, target in self._conf.target_symlinks.items():
             os.symlink(source, target)
 
-    def run_all(self, date, message):
+    def run_all(self, date, message, update_confxml: bool):
         """
         Args:
             date (datetime): a date used to create a new archive
         """
         self.update_from_repository()
-        self.update_working_conf()
+        self.update_working_conf(update_confxml)
         self.update_npm_deps()
         self.validate_configuration()
         self.build_project()
@@ -509,7 +516,7 @@ class Deployer(object):
         self.remove_current_deployment()
         self.deploy_new_version(arch_path)
         with open(os.path.join(arch_path, DEPLOY_MESSAGE_FILE), 'rb') as fr:
-            print('\nDeployment information:\n%s' % fr.read())
+            print('\nDeployment information:\n{}'.format(fr.read()))
 
 
 def list_archive(conf):
@@ -536,7 +543,7 @@ def _test_archive_validity(conf, archive_id):
     flag_file_path = os.path.join(conf.archive_dir, archive_id, INVALIDATION_FILE)
     if os.path.isfile(flag_file_path):
         with open(flag_file_path, 'r') as fr:
-            raise InvalidatedArchiveException('Archive marked as invalid. Reason: %s' % fr.read())
+            raise InvalidatedArchiveException('Archive marked as invalid. Reason: {}'.format(fr.read()))
 
 
 def find_matching_archive(conf, arch_id):
@@ -565,11 +572,11 @@ def find_matching_archive(conf, arch_id):
 
 if __name__ == '__main__':
     if os.getuid() == 0:
-        import sys
         print('Please do not run the script as root')
-        sys.exit(1)
+        sys.exit(2)
     argp = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
         description=dedent('''\
             A simple KonText deployment script.
 
@@ -579,14 +586,19 @@ if __name__ == '__main__':
 
             To add more files, please configure "kontextConfCustom" item
             in your deployment config file.'''.format(', '.join(KONTEXT_CONF_FILES))))
-    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list, invalidate)')
+    argp.add_argument('action', metavar='ACTION', help='Action to perform (deploy, list, invalidate, show_conf)')
     argp.add_argument('archive_id', metavar='ARCHIVE_ID', nargs='?',
                       default='new', help='Archive identifier (default is *new*)')
     argp.add_argument('-c', '--config-path', type=str,
                       help='Path to a JSON config file (default is *deploy.json* in script\'s directory)')
+    argp.add_argument('-b', '--no-configxml-backup', default=False, action='store_true')
     argp.add_argument('-m', '--message', type=str,
                       help='A custom message stored in generated archive (.deployinfo)')
+    argp.add_argument('-h', '--help', default=False, action='store_true', help='show help and exit')
     args = argp.parse_args()
+    if args.help:
+        argp.print_help()
+        sys.exit(1)
     try:
         if args.config_path is None:
             if os.path.isfile(GLOBAL_CONF_PATH):
@@ -595,32 +607,45 @@ if __name__ == '__main__':
                 conf_path = os.path.join(os.path.dirname(__file__), './deploy.json')
         else:
             conf_path = args.config_path
+        conf_path = os.path.realpath(conf_path)
+        print(f'\n\U0001F440 Using deployment configuration {conf_path}')
+
+        if args.action == 'show_conf':
+            with open(conf_path) as cf:
+                conf = json.load(cf)
+                print('\nKonText deployment configuration:\n')
+                print(json.dumps(conf, indent=2))
+                print('\n')
+            sys.exit(1)
+
         with open(conf_path, 'rb') as fr:
             conf = Configuration(json.load(fr))
 
         if args.action == 'deploy':
             d = Deployer(conf)
             if args.archive_id == 'new':
-                print('installing latest version from %s' % conf.git_branch)
-                d.run_all(datetime.now(), args.message)
+                print(f'installing latest version from {conf.git_branch}')
+                d.run_all(datetime.now(), args.message, args.no_configxml_backup)
             else:
                 m = find_matching_archive(conf, args.archive_id)
                 _test_archive_validity(conf, m)
                 if m is not None:
-                    print('installing from archive: %s' % m)
+                    print(f'installing from archive: {m}')
                     d.from_archive(m)
                 else:
-                    InputError('No matching archive for %s' % args.archive_id)
+                    raise InputError(f'No matching archive for {args.archive_id}')
         elif args.action == 'list':
             list_archive(conf)
         elif args.action == 'invalidate':
             invalidate_archive(conf, args.archive_id, args.message)
         else:
-            raise Exception('Unknown action "%s" (use one of: deploy, list)' % (args.action,))
+            raise Exception(f'Unknown action "{args.action}" (use one of: deploy, list)')
     except ConfigError as e:
-        print('\nConfiguration error: %s\n' % e)
-#    except Exception as e:
-#        print('\nFailed to deploy latest version.\n')
-#        print('Reason: {}'.format(e))
+        print(f'\n\U0001F4A5 Configuration error: {e}\n')
+        sys.exit(2)
+    except Exception as e:
+        print('\n\U0001F4A5 Failed to deploy latest version.\n')
+        print('Reason: {}'.format(e))
+        sys.exit(2)
     print('\n')
 

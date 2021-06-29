@@ -1,0 +1,16 @@
+#!/bin/bash
+
+export GLOBAL_CONF_PATH='/usr/local/etc/kontext-deploy.json'
+
+#/usr/local/bin/kontext-update "$@"
+./deploy.py "$@"
+ret=$?
+if [ $ret -eq 0 ]; then
+    echo "new version installed, now going to restart the services..."
+    sudo systemctl restart gunicorn-kontext
+    sudo systemctl restart rq-all.target
+    sudo systemctl restart rqscheduler
+    sudo systemctl restart nginx
+elif [ $ret -eq 2 ]; then
+    printf "\nfailed to install latest KonText - the services won't be restarted\n\n"
+fi
