@@ -430,7 +430,7 @@ class Deployer(object):
             self.shell_cmd('git', 'reset', '--hard', 'HEAD')
             self.shell_cmd('git', 'checkout', self._conf.git_branch)
             self.shell_cmd('git', 'fetch', self._conf.git_remote)
-            self.shell_cmd('git', 'merge', f'{self._conf.git_remote}{self._conf.git_branch}')
+            self.shell_cmd('git', 'merge', f'{self._conf.git_remote}/{self._conf.git_branch}')
 
     @description('Writing information about used GIT commit')
     def record_deployment_info(self, arch_path, message):
